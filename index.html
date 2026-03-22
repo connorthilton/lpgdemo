@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LPG Acquisition Analysis Tool</title>
+  <link rel="icon" type="image/png" href="loweprop.png">
+
+  <!-- SheetJS for reading .xlsx files entirely client-side -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Chart.js for radar charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+  <style>
+    /* ── Reset & base ──────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* ── Header ────────────────────────────────────────────── */
+    .header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: white;
+      padding: 22px 32px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+    }
+    .header h1 { font-size: 1.7rem; font-weight: 700; letter-spacing: -0.5px; }
+    .header p  { color: #94a3b8; margin-top: 4px; font-size: 0.875rem; }
+
+    /* ── Page container ────────────────────────────────────── */
+    .container { max-width: 1500px; margin: 0 auto; padding: 28px 32px; }
+
+    /* ── Controls card ─────────────────────────────────────── */
+    .controls {
+      background: white;
+      border-radius: 12px;
+      padding: 24px 28px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      margin-bottom: 20px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+    }
+
+    .control-group h3 {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #64748b;
+      margin-bottom: 14px;
+    }
+
+    /* ── File upload ───────────────────────────────────────── */
+    .file-upload-area {
+      border: 2px dashed #e2e8f0;
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .file-upload-area:hover          { border-color: #3b82f6; background: #eff6ff; }
+    .file-upload-area.has-file       { border-color: #22c55e; background: #f0fdf4; }
+    .file-upload-area input          { display: none; }
+    .file-upload-label               { display: block; cursor: pointer; }
+    .file-icon                       { font-size: 2rem; margin-bottom: 6px; }
+    .file-upload-text                { color: #64748b; font-size: 0.875rem; line-height: 1.5; }
+    .file-upload-text strong         { color: #3b82f6; }
+    #filename-display                { margin-top: 8px; font-size: 0.82rem; color: #22c55e; font-weight: 600; }
+
+    /* ── Action row ────────────────────────────────────────── */
+    .actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+
+    /* ── Buttons ───────────────────────────────────────────── */
+    .btn {
+      padding: 9px 22px;
+      border-radius: 8px;
+      border: none;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+    }
+    .btn-primary           { background: #3b82f6; color: white; }
+    .btn-primary:hover     { background: #2563eb; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,0.35); }
+    .btn-primary:disabled  { background: #93c5fd; cursor: not-allowed; transform: none; box-shadow: none; }
+    .btn-secondary         { background: white; color: #374151; border: 1.5px solid #e2e8f0; }
+    .btn-secondary:hover   { background: #f8fafc; border-color: #3b82f6; color: #3b82f6; }
+    .btn-secondary:disabled{ opacity: 0.45; cursor: not-allowed; }
+    .btn-ai                { background: #7c3aed; color: white; }
+    .btn-ai:hover          { background: #6d28d9; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(124,58,237,0.35); }
+    .btn-ai:disabled       { background: #c4b5fd; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* ── Status message ────────────────────────────────────── */
+    .status          { font-size: 0.82rem; color: #64748b; }
+    .status.error    { color: #ef4444; }
+    .status.success  { color: #16a34a; }
+
+    /* ── Sliders ───────────────────────────────────────────── */
+    .slider-group { display: flex; flex-direction: column; gap: 18px; }
+
+    .slider-item { display: flex; flex-direction: column; gap: 6px; }
+
+    .slider-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .slider-label { font-size: 0.875rem; font-weight: 500; color: #374151; }
+    .slider-value {
+      font-size: 0.82rem; font-weight: 700;
+      color: #3b82f6;
+      background: #eff6ff;
+      padding: 2px 9px;
+      border-radius: 12px;
+      min-width: 38px;
+      text-align: center;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: #e2e8f0;
+      outline: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: #3b82f6;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(59,130,246,0.4);
+      transition: transform 0.1s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+    input[type="range"]::-moz-range-thumb {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: #3b82f6;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 2px 4px rgba(59,130,246,0.4);
+    }
+
+    /* ── Highlighted Results section ───────────────────────── */
+    .highlighted-section {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      margin-bottom: 20px;
+      border-top: 3px solid #7c3aed;
+    }
+
+    .highlighted-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 22px;
+      border-bottom: 1px solid #f1f5f9;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .highlighted-header-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .highlighted-header h2   { font-size: 0.95rem; font-weight: 700; color: #1e293b; }
+    .highlighted-badge {
+      font-size: 0.72rem; font-weight: 700;
+      background: #ede9fe; color: #6d28d9;
+      padding: 3px 10px; border-radius: 10px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .ai-status-msg {
+      font-size: 0.78rem;
+      color: #7c3aed;
+    }
+
+    /* ── Highlighted table ─────────────────────────────────── */
+    .highlighted-table-wrapper { overflow-x: auto; border-radius: 0 0 12px 12px; }
+
+    .highlighted-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    .highlighted-table thead th {
+      background: #faf5ff;
+      padding: 9px 14px;
+      text-align: left;
+      font-weight: 700;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #7c3aed;
+      border-bottom: 1px solid #ede9fe;
+      white-space: nowrap;
+    }
+    .highlighted-table tbody tr {
+      border-bottom: 1px solid #f8fafc;
+      transition: background 0.1s;
+    }
+    .highlighted-table tbody tr:hover { background: #faf5ff; }
+    .highlighted-table tbody tr:last-child { border-bottom: none; }
+    .highlighted-table td {
+      padding: 10px 14px;
+      color: #374151;
+      vertical-align: middle;
+    }
+    .hl-rank {
+      font-weight: 700;
+      color: #7c3aed;
+      font-size: 0.8rem;
+      white-space: nowrap;
+      width: 36px;
+    }
+    .hl-name {
+      font-weight: 600;
+      color: #1e293b;
+      white-space: nowrap;
+      max-width: 70px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: middle;
+    }
+    .hl-score {
+      white-space: nowrap;
+      font-weight: 700;
+      width: 140px;
+      vertical-align: middle;
+    }
+    .hl-ai {
+      line-height: 1.6;
+      color: #374151;
+      font-size: 0.8rem;
+      min-width: 360px;
+    }
+    .ai-loading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #7c3aed;
+      font-size: 0.78rem;
+    }
+    .ai-spinner {
+      width: 14px; height: 14px;
+      border: 2px solid #ede9fe;
+      border-top-color: #7c3aed;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .ai-placeholder { color: #94a3b8; font-style: italic; }
+    .ai-error { color: #dc2626; font-size: 0.78rem; }
+    .ai-text {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .hl-chart {
+      width: 250px;
+      min-width: 250px;
+      text-align: center;
+      vertical-align: middle;
+      padding: 6px 10px;
+    }
+    .hl-chart canvas { display: block; margin: 0 auto; }
+
+    /* ── Full Results card ─────────────────────────────────── */
+    .results-section {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    /* Clip table corners to the card's border-radius without
+       blocking the horizontal scroll on .table-wrapper */
+    .table-wrapper {
+      border-radius: 0 0 12px 12px;
+      overflow-x: auto;
+    }
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 22px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .results-header h2 { font-size: 0.95rem; font-weight: 700; color: #1e293b; }
+    .results-count {
+      font-size: 0.78rem; color: #64748b;
+      background: #f1f5f9; padding: 3px 10px; border-radius: 10px;
+    }
+
+    /* ── Full Results Table ─────────────────────────────────── */
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; table-layout: fixed; }
+
+    thead th {
+      background: #f8fafc;
+      padding: 8px 10px;
+      text-align: left;
+      font-weight: 700;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+      border-bottom: 1px solid #e2e8f0;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      user-select: none;
+      transition: background 0.1s, color 0.1s;
+    }
+    thead th:hover           { background: #f1f5f9; color: #3b82f6; }
+    thead th.sort-asc::after  { content: " ↑"; color: #3b82f6; }
+    thead th.sort-desc::after { content: " ↓"; color: #3b82f6; }
+
+    /* Column widths — property name gets a capped share, numerics share the rest */
+    col.col-name     { width: 13%; }
+    col.col-narrow   { width: 5%; }
+    col.col-medium   { width: 6.5%; }
+    col.col-score    { width: 7.5%; }
+    col.col-tax-score { width: 5.5%; }
+    col.col-units    { width: 4%; }
+    col.col-vacancy  { width: 5.2%; }
+    col.col-avg-rent { width: 5.2%; }
+
+    tbody tr { border-bottom: 1px solid #f8fafc; transition: background 0.1s; }
+    tbody tr:hover { background: #f8fafc; }
+    tbody td { padding: 8px 10px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Property name: truncate long names with ellipsis + tooltip via title attr */
+    td.col-name { font-weight: 500; }
+
+    /* Score column styling */
+    .score-cell       { font-weight: 600; color: #1e293b; }
+    .total-score-cell { font-weight: 700; }
+
+    .score-badge {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 12px;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    /* Question mark badge for zero-tax rows */
+    .tax-unknown {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fef9c3;
+      border: 1px solid #fde047;
+      color: #854d0e;
+      font-size: 0.65rem;
+      font-weight: 700;
+      margin-left: 5px;
+      cursor: help;
+      vertical-align: middle;
+      line-height: 1;
+    }
+
+    /* ── Empty / loading states ────────────────────────────── */
+    .empty-state { padding: 56px 24px; text-align: center; color: #94a3b8; }
+    .empty-state .empty-icon { font-size: 2.8rem; margin-bottom: 10px; }
+    .empty-state p { font-size: 0.875rem; line-height: 1.6; }
+
+    /* ── Responsive tweaks ─────────────────────────────────── */
+    @media (max-width: 768px) {
+      .controls { grid-template-columns: 1fr; }
+      .container { padding: 16px; }
+    }
+  </style>
+</head>
+
+<body>
+
+<header class="header">
+  <h1>LPG Acquisition Analysis Tool</h1>
+  <p>Upload a property spreadsheet to score and rank acquisition candidates</p>
+</header>
+
+<main class="container">
+
+  <!-- ── Controls ─────────────────────────────────────────── -->
+  <div class="controls">
+
+    <!-- Left column: file upload + action buttons -->
+    <div class="control-group">
+      <h3>Data Source</h3>
+
+      <div class="file-upload-area" id="drop-zone">
+        <label class="file-upload-label" for="file-input">
+          <div class="file-icon">📂</div>
+          <div class="file-upload-text">
+            <strong>Click to upload</strong> or drag &amp; drop<br>
+            <span>.xlsx files only</span>
+          </div>
+          <div id="filename-display"></div>
+        </label>
+        <input type="file" id="file-input" accept=".xlsx">
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary"   id="process-btn"  disabled>Process File</button>
+        <button class="btn btn-secondary" id="download-btn" disabled>⬇ Download CSV</button>
+        <span class="status" id="status-msg"></span>
+      </div>
+    </div>
+
+    <!-- Right column: scoring weight sliders -->
+    <div class="control-group">
+      <h3>Scoring Weights</h3>
+      <div class="slider-group">
+
+        <div class="slider-item">
+          <div class="slider-label-row">
+            <span class="slider-label">Revenue per Unit Weight</span>
+            <span class="slider-value" id="revenue-weight-val">1.0</span>
+          </div>
+          <input type="range" id="revenue-weight" min="0" max="5" step="0.1" value="1">
+        </div>
+
+        <div class="slider-item">
+          <div class="slider-label-row">
+            <span class="slider-label">Occupancy Weight</span>
+            <span class="slider-value" id="vacancy-weight-val">1.0</span>
+          </div>
+          <input type="range" id="vacancy-weight" min="0" max="5" step="0.1" value="1">
+        </div>
+
+        <div class="slider-item">
+          <div class="slider-label-row">
+            <span class="slider-label">Taxes / Revenue Weight</span>
+            <span class="slider-value" id="tax-weight-val">1.0</span>
+          </div>
+          <input type="range" id="tax-weight" min="0" max="5" step="0.1" value="1">
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /controls -->
+
+  <!-- ── Highlighted Results (Top 5) ──────────────────────── -->
+  <div class="highlighted-section" id="highlighted-section" style="display:none;">
+    <div class="highlighted-header">
+      <div class="highlighted-header-left">
+        <h2>Highlighted Results</h2>
+        <span class="highlighted-badge">Top 5</span>
+        <span class="ai-status-msg" id="ai-status-msg"></span>
+      </div>
+    </div>
+    <div class="highlighted-table-wrapper">
+      <div id="highlighted-table-container"></div>
+    </div>
+  </div>
+
+  <!-- ── Full Results ──────────────────────────────────────── -->
+  <div class="results-section">
+    <div class="results-header">
+      <h2>Full Results</h2>
+      <span class="results-count" id="results-count">No data loaded</span>
+    </div>
+    <div class="table-wrapper">
+      <div id="table-container">
+        <div class="empty-state">
+          <div class="empty-icon">📊</div>
+          <p>Upload an Excel file and click <strong>Process File</strong> to see results.<br>
+             Only rows where <code>Building Status</code> equals <em>"Existing"</em> are scored.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ================================================================
+// OPENAI CONFIGURATION
+// Fill in your API key below before using AI analysis.
+// ================================================================
+
+const OPENAI_MODEL = 'gpt-5.4';
+
+const MARKET_CONTEXT = `U.S. Multifamily Market Context (Q1 2026):
+  Vacancy Rate: 9.3%
+  Net Absorption: 52,100 units
+  Rent Growth (YOY): 1.1%
+  Under Construction: 469,374 units
+  Market Rent (Monthly): $1,893
+  Total Nonfarm Employment: 159.4M
+  U.S. Unemployment Rate: 4.6%
+  Household Growth (YOY): 0.8%`;
+
+const SYSTEM_PROMPT = `You are a multifamily acquisitions professional. It is March 2026. Given this pre-screened property's data, point out a couple of things worth checking on before moving forward. Be specific to the numbers, keep it collegial. 2–3 sentences, plain text, no formatting. Do not use a fixed opener — start directly with the substance, and vary your phrasing naturally across properties. National market context is provided for reference — only cite it if it's genuinely relevant to this property. After your analysis, on a new line by itself, output exactly: AI_SCORE: X.X where X.X is your 0.0–10.0 rating of this property's acquisition potential based on your analysis. This must be the last line of your response.`;
+
+
+// ================================================================
+// STATE
+// ================================================================
+
+/** The raw File object selected by the user. */
+let uploadedFile = null;
+
+/**
+ * Array of processed row objects. Each object holds the computed
+ * metrics, scores, and the original raw spreadsheet row.
+ */
+let processedRows = [];
+
+/** Current sort column key and direction. */
+let sortState = { col: 'totalScore', dir: 'desc' };
+
+/**
+ * AI analysis results keyed by property name.
+ * Each value: { status: 'loading' | 'done' | 'error', text: string }
+ */
+const aiResults = new Map();
+
+/** Whether an AI analysis run is currently in progress. */
+let aiRunning = false;
+
+
+// ================================================================
+// FIELD NAMES
+// All keys are the lowercase-trimmed versions of what we expect
+// to find as column headers in row 1 of the spreadsheet.
+// ================================================================
+
+const FIELDS = {
+  rentStudio : 'studio effective rent/unit',
+  rent1bd    : 'one bedroom effective rent/unit',
+  rent2bd    : 'two bedroom effective rent/unit',
+  rent3bd    : 'three bedroom effective rent/unit',
+  rent4bd    : 'four bedroom effective rent/unit',
+  vacancy    : 'vacancy %',
+  units      : 'number of units',
+  taxes      : 'taxes total',
+  dm         : 'building status',
+};
+
+const NAME_FIELD_CANDIDATES = [
+  'property name', 'property_name', 'propertyname', 'property', 'name', 'prop_name', 'address'
+];
+
+
+// ================================================================
+// DOM REFERENCES
+// ================================================================
+
+const fileInput              = document.getElementById('file-input');
+const dropZone               = document.getElementById('drop-zone');
+const filenameDisplay        = document.getElementById('filename-display');
+const processBtn             = document.getElementById('process-btn');
+const downloadBtn            = document.getElementById('download-btn');
+const statusMsg              = document.getElementById('status-msg');
+const tableContainer         = document.getElementById('table-container');
+const resultsCount           = document.getElementById('results-count');
+const highlightedSection     = document.getElementById('highlighted-section');
+const highlightedTableCont   = document.getElementById('highlighted-table-container');
+let analyzeDebounceTimer = null;
+const aiStatusMsg            = document.getElementById('ai-status-msg');
+
+const revenueSlider   = document.getElementById('revenue-weight');
+const vacancySlider   = document.getElementById('vacancy-weight');
+const taxSlider       = document.getElementById('tax-weight');
+
+const revenueValEl    = document.getElementById('revenue-weight-val');
+const vacancyValEl    = document.getElementById('vacancy-weight-val');
+const taxValEl        = document.getElementById('tax-weight-val');
+
+
+// ================================================================
+// SLIDER LISTENERS
+// ================================================================
+
+revenueSlider.addEventListener('input', () => {
+  revenueValEl.textContent = parseFloat(revenueSlider.value).toFixed(1);
+  if (processedRows.length > 0) recomputeScoresAndRender();
+});
+
+vacancySlider.addEventListener('input', () => {
+  vacancyValEl.textContent = parseFloat(vacancySlider.value).toFixed(1);
+  if (processedRows.length > 0) recomputeScoresAndRender();
+});
+
+taxSlider.addEventListener('input', () => {
+  taxValEl.textContent = parseFloat(taxSlider.value).toFixed(1);
+  if (processedRows.length > 0) recomputeScoresAndRender();
+});
+
+
+// ================================================================
+// FILE UPLOAD — click and drag-and-drop
+// ================================================================
+
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) handleFileSelected(file);
+});
+
+dropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropZone.style.borderColor = '#3b82f6';
+  dropZone.style.background  = '#eff6ff';
+});
+
+dropZone.addEventListener('dragleave', () => {
+  if (!uploadedFile) {
+    dropZone.style.borderColor = '';
+    dropZone.style.background  = '';
+  }
+});
+
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.toLowerCase().endsWith('.xlsx')) {
+    handleFileSelected(file);
+  } else {
+    setStatus('Please drop a .xlsx file.', 'error');
+  }
+});
+
+function handleFileSelected(file) {
+  uploadedFile = file;
+  filenameDisplay.textContent = file.name;
+  dropZone.classList.add('has-file');
+  processBtn.disabled = false;
+  setStatus('');
+}
+
+
+// ================================================================
+// PROCESS FILE
+// ================================================================
+
+processBtn.addEventListener('click', () => {
+  if (!uploadedFile) return;
+  setStatus('Reading file…', '');
+  processBtn.disabled = true;
+
+  const reader = new FileReader();
+
+  reader.onload = (e) => {
+    try {
+      const data     = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+
+      const rows = XLSX.utils.sheet_to_json(worksheet, { defval: null, raw: true });
+
+      processRows(rows);
+    } catch (err) {
+      setStatus('Error reading file: ' + err.message, 'error');
+      console.error(err);
+    } finally {
+      processBtn.disabled = false;
+    }
+  };
+
+  reader.onerror = () => {
+    setStatus('Failed to read file.', 'error');
+    processBtn.disabled = false;
+  };
+
+  reader.readAsArrayBuffer(uploadedFile);
+});
+
+
+// ================================================================
+// ROW PROCESSING
+// ================================================================
+
+function processRows(rawRows) {
+  processedRows = [];
+  aiResults.clear();
+  let skippedCount = 0;
+
+  // ── Detect property name field ──────────────────────────────
+  let nameField = null;
+  if (rawRows.length > 0) {
+    const firstRowKeys = Object.keys(rawRows[0]);
+    for (const candidate of NAME_FIELD_CANDIDATES) {
+      const match = firstRowKeys.find(k => k.toLowerCase().trim() === candidate);
+      if (match) { nameField = match; break; }
+    }
+  }
+
+  // ── Iterate rows ────────────────────────────────────────────
+  for (let i = 0; i < rawRows.length; i++) {
+    const raw = rawRows[i];
+
+    const row = {};
+    for (const [k, v] of Object.entries(raw)) {
+      row[k.toLowerCase().trim()] = v;
+    }
+
+    // 1. Filter: only process "existing" properties
+    const dmVal = row[FIELDS.dm];
+    if (!dmVal || String(dmVal).toLowerCase().trim() !== 'existing') {
+      skippedCount++;
+      continue;
+    }
+
+    // 2. Collect valid rent values
+    const rentKeys   = [FIELDS.rentStudio, FIELDS.rent1bd, FIELDS.rent2bd,
+                        FIELDS.rent3bd, FIELDS.rent4bd];
+    const validRents = rentKeys
+      .map(f => row[f])
+      .filter(v => v !== null && v !== undefined && v !== '' && !isNaN(Number(v)) && Number(v) > 0)
+      .map(Number);
+
+    if (validRents.length === 0) { skippedCount++; continue; }
+
+    // 3. Validate number_of_units
+    const unitsRaw = row[FIELDS.units];
+    if (unitsRaw === null || unitsRaw === undefined || unitsRaw === ''
+        || isNaN(Number(unitsRaw)) || Number(unitsRaw) <= 0) {
+      skippedCount++;
+      continue;
+    }
+    const units = Number(unitsRaw);
+
+    // 4. Vacancy
+    let vacancy = row[FIELDS.vacancy];
+    vacancy = (vacancy !== null && vacancy !== undefined && vacancy !== '' && !isNaN(Number(vacancy)))
+      ? Number(vacancy)
+      : 0;
+    if (vacancy > 1) vacancy = vacancy / 100;
+
+    // 5. Taxes
+    const taxesRaw = row[FIELDS.taxes];
+    const taxes = (taxesRaw !== null && taxesRaw !== undefined && taxesRaw !== ''
+                   && !isNaN(Number(taxesRaw)))
+      ? Number(taxesRaw)
+      : 0;
+
+    // 6. Core calculations
+    const avgRent        = validRents.reduce((a, b) => a + b, 0) / validRents.length;
+    const revenuePerUnit = (1 - vacancy) * avgRent;
+    const totalRevenue   = revenuePerUnit * units;
+
+    if (totalRevenue === 0) { skippedCount++; continue; }
+
+    const taxesRevenueRatio = taxes / totalRevenue;
+
+    // 7. Property name
+    let propertyName = nameField ? raw[nameField] : null;
+    if (!propertyName) propertyName = `Row ${i + 2}`;
+
+    processedRows.push({
+      name             : String(propertyName),
+      units,
+      vacancy,
+      avgRent,
+      revenuePerUnit,
+      totalRevenue,
+      taxes,
+      taxesRevenueRatio,
+      revenueScore     : 0,
+      vacancyScore     : 0,
+      taxScore         : 0,
+      totalScore       : 0,
+      // Original raw row data for AI prompt
+      rawRow           : raw,
+    });
+  }
+
+  if (processedRows.length === 0) {
+    setStatus(`No valid rows found (${skippedCount} rows skipped).`, 'error');
+    renderEmptyState('No valid rows found. Make sure your file contains rows where <code>Building Status</code> equals <em>"Existing"</em> and all required fields are populated.');
+    highlightedSection.style.display = 'none';
+    return;
+  }
+
+  recomputeScoresAndRender();
+  setStatus(
+    `Loaded ${processedRows.length} propert${processedRows.length === 1 ? 'y' : 'ies'}`
+    + (skippedCount ? ` · ${skippedCount} rows skipped` : ''),
+    'success'
+  );
+}
+
+
+// ================================================================
+// PERCENTILE SCORING
+// ================================================================
+
+function recomputeScoresAndRender() {
+  const n = processedRows.length;
+
+  const sortedRevenue   = processedRows.map(r => r.revenuePerUnit).sort((a, b) => a - b);
+  const sortedOccupancy = processedRows.map(r => 1 - r.vacancy).sort((a, b) => a - b);
+  const sortedTax       = processedRows.map(r => r.taxesRevenueRatio).sort((a, b) => a - b);
+
+  const revenueWeight = parseFloat(revenueSlider.value);
+  const vacancyWeight = parseFloat(vacancySlider.value);
+  const taxWeight     = parseFloat(taxSlider.value);
+
+  for (const row of processedRows) {
+    const revIdx = sortedRevenue.indexOf(row.revenuePerUnit);
+    const occIdx = sortedOccupancy.indexOf(1 - row.vacancy);
+    const taxIdx = sortedTax.indexOf(row.taxesRevenueRatio);
+
+    const revPct = n > 1 ? revIdx / (n - 1) : 0.5;
+    const occPct = n > 1 ? occIdx / (n - 1) : 0.5;
+    const taxPct = n > 1 ? taxIdx / (n - 1) : 0.5;
+
+    row.revenueScore = round1(revPct * 10);
+    row.vacancyScore = round1(occPct * 10);
+    row.taxScore     = round1((1 - taxPct) * 10);
+
+    const weightSum = revenueWeight + vacancyWeight + taxWeight;
+    const rawScore = row.revenueScore * revenueWeight +
+                     row.vacancyScore * vacancyWeight +
+                     row.taxScore     * taxWeight;
+    row.totalScore = weightSum > 0 ? round1(rawScore / (weightSum * 10) * 30) : 0;
+  }
+
+  sortState = { col: 'totalScore', dir: 'desc' };
+
+  // Clear AI results when scores change (top 5 may have shifted)
+  aiResults.clear();
+  setAiStatus('');
+
+  renderHighlightedTable();
+  scheduleAnalysis();
+  renderTable();
+  downloadBtn.disabled = false;
+  resultsCount.textContent = `${n} propert${n === 1 ? 'y' : 'ies'}`;
+}
+
+function round1(v) { return Math.round(v * 10) / 10; }
+
+
+// ================================================================
+// TOP 10 HELPER
+// Returns up to 10 rows sorted by totalScore descending.
+// ================================================================
+
+function getTop5() {
+  return [...processedRows]
+    .sort((a, b) => b.totalScore - a.totalScore)
+    .slice(0, 5);
+}
+
+
+// ================================================================
+// HIGHLIGHTED TABLE RENDERING
+// ================================================================
+
+function renderHighlightedTable() {
+  if (processedRows.length === 0) {
+    highlightedSection.style.display = 'none';
+    return;
+  }
+
+  highlightedSection.style.display = '';
+  const top10 = getTop5();
+
+  const maxPossibleScore = 30;
+
+  let html = `<table class="highlighted-table">
+    <thead><tr>
+      <th style="width:36px;">#</th>
+      <th style="width:180px;">Property</th>
+      <th style="width:140px;">Total Score</th>
+      <th style="width:250px;">Visual</th>
+      <th>AI Analysis</th>
+    </tr></thead>
+    <tbody>`;
+
+  for (let i = 0; i < top10.length; i++) {
+    const row    = top10[i];
+    const aiData = aiResults.get(row.name);
+    const palette = scorePalette(row.totalScore, maxPossibleScore);
+
+    let aiCell = '';
+    if (!aiData) {
+      aiCell = `<span class="ai-placeholder">Analysis pending…</span>`;
+    } else if (aiData.status === 'loading') {
+      aiCell = `<span class="ai-loading"><span class="ai-spinner"></span>Analyzing…</span>`;
+    } else if (aiData.status === 'error') {
+      aiCell = `<span class="ai-error">Error: ${escHtml(aiData.text)}</span>`;
+    } else {
+      aiCell = `<span class="ai-text">${escHtml(aiData.text)}</span>`;
+    }
+
+    html += `<tr>
+      <td class="hl-rank">${i + 1}</td>
+      <td class="hl-name" title="${escHtml(row.name)}">${escHtml(row.name)}</td>
+      <td class="hl-score">
+        <span class="score-badge" style="background:${palette.bg};color:${palette.fg}">${row.totalScore.toFixed(1)}</span>
+      </td>
+      <td class="hl-chart">${aiData?.status === 'done' ? `<canvas id="radar-${i}" width="200" height="200"></canvas>` : ''}</td>
+      <td class="hl-ai">${aiCell}</td>
+    </tr>`;
+  }
+
+  html += '</tbody></table>';
+  highlightedTableCont.innerHTML = html;
+  initRadarCharts(top10);
+}
+
+function initRadarCharts(top5) {
+  for (let i = 0; i < top5.length; i++) {
+    const row    = top5[i];
+    const aiData = aiResults.get(row.name);
+    const canvas = document.getElementById(`radar-${i}`);
+    if (!canvas) continue;
+
+    const aiScore = (aiData?.status === 'done' && aiData.aiScore != null) ? aiData.aiScore : null;
+
+    new Chart(canvas, {
+      type: 'radar',
+      data: {
+        labels: ['Revenue', 'Occupancy', 'Tax Efficiency', 'AI Score'],
+        datasets: [{
+          data: [
+            row.revenueScore,
+            row.vacancyScore,
+            row.taxScore,
+            aiScore ?? 0,
+          ],
+          backgroundColor: 'rgba(124, 58, 237, 0.12)',
+          borderColor: '#7c3aed',
+          borderWidth: 2,
+          pointBackgroundColor: '#7c3aed',
+          pointBorderColor: '#fff',
+          pointRadius: 4,
+          pointHoverRadius: 5,
+        }],
+      },
+      options: {
+        responsive: false,
+        layout: { padding: 16 },
+        scales: {
+          r: {
+            min: 5,
+            max: 10,
+            ticks: {
+              stepSize: 1,
+              font: { size: 8 },
+              color: '#94a3b8',
+              backdropColor: 'transparent',
+            },
+            pointLabels: {
+              font: { size: 10, weight: '600' },
+              color: '#374151',
+            },
+            grid:       { color: 'rgba(203,213,225,0.7)' },
+            angleLines: { color: 'rgba(203,213,225,0.7)' },
+          },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.raw != null ? ctx.raw.toFixed(1) : 'N/A'} / 10`,
+            },
+          },
+        },
+      },
+    });
+  }
+}
+
+
+// ================================================================
+// AI ANALYSIS
+// ================================================================
+
+async function runAnalysis() {
+  if (processedRows.length === 0 || aiRunning) return;
+
+const top5 = getTop5();
+  aiRunning = true;
+  setAiStatus(`Analyzing ${top5.length} properties…`);
+
+  for (const row of top5) {
+    aiResults.set(row.name, { status: 'loading', text: '' });
+  }
+  renderHighlightedTable();
+
+  let previousOpening = null;
+  for (const row of top5) {
+    await analyzeProperty(row, previousOpening);
+    const result = aiResults.get(row.name);
+    if (result?.status === 'done' && result.text) {
+      const firstSentence = result.text.split(/[\.!]/)[0].trim();
+      previousOpening = firstSentence.slice(0, 80);
+    }
+  }
+
+  aiRunning = false;
+  setAiStatus('Analysis complete.');
+  renderHighlightedTable();
+}
+
+function scheduleAnalysis() {
+  clearTimeout(analyzeDebounceTimer);
+  analyzeDebounceTimer = setTimeout(runAnalysis, 800);
+}
+
+async function analyzeProperty(row, previousOpening = null) {
+  try {
+    const userMessage = buildUserMessage(row, previousOpening);
+
+    const response = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user',   content: userMessage   },
+        ],
+        max_completion_tokens: 600,
+        temperature: 0.65,
+      }),
+    });
+
+    if (!response.ok) {
+      const errJson = await response.json().catch(() => ({}));
+      const errMsg  = errJson?.error?.message || `HTTP ${response.status}`;
+      aiResults.set(row.name, { status: 'error', text: errMsg });
+      renderHighlightedTable();
+      return;
+    }
+
+    const json = await response.json();
+    const raw  = json?.choices?.[0]?.message?.content?.trim() || '(no response)';
+    const scoreMatch = raw.match(/AI_SCORE:\s*(\d+(?:\.\d+)?)/);
+    const aiScore    = scoreMatch ? Math.min(10, Math.max(0, parseFloat(scoreMatch[1]))) : null;
+    const text       = raw.replace(/\nAI_SCORE:.*$/m, '').trim();
+    aiResults.set(row.name, { status: 'done', text, aiScore });
+    renderHighlightedTable();
+  } catch (err) {
+    aiResults.set(row.name, { status: 'error', text: err.message });
+    renderHighlightedTable();
+  }
+}
+
+/**
+ * Builds the user message for a single property.
+ * Sends all original spreadsheet columns + computed metrics.
+ */
+function buildUserMessage(row, previousOpening = null) {
+  const lines = [`Property: ${row.name}`, '', 'Spreadsheet Data:'];
+
+  // All original columns from the raw row
+  for (const [key, val] of Object.entries(row.rawRow)) {
+    if (val !== null && val !== undefined && val !== '') {
+      lines.push(`  ${key}: ${val}`);
+    }
+  }
+
+  lines.push('', 'Computed Metrics:');
+  lines.push(`  Average Effective Rent: $${row.avgRent.toFixed(2)}`);
+  lines.push(`  Revenue per Unit (vacancy-adjusted): $${row.revenuePerUnit.toFixed(2)}`);
+  lines.push(`  Total Revenue: $${row.totalRevenue.toFixed(2)}`);
+  lines.push(`  Taxes as % of Revenue: ${(row.taxesRevenueRatio * 100).toFixed(2)}%`);
+  lines.push(`  Revenue Score (0–10): ${row.revenueScore.toFixed(1)}`);
+  lines.push(`  Occupancy Score (0–10): ${row.vacancyScore.toFixed(1)}`);
+  lines.push(`  Tax Score (0–10): ${row.taxScore.toFixed(1)}`);
+  lines.push(`  Total Weighted Score: ${row.totalScore.toFixed(1)}`);
+
+  lines.push('', MARKET_CONTEXT);
+
+  if (previousOpening) {
+    lines.push('', `Note: The previous property's response opened with "${previousOpening}" — open yours differently.`);
+  }
+
+  return lines.join('\n');
+}
+
+function setAiStatus(msg) {
+  aiStatusMsg.textContent = msg;
+}
+
+
+// ================================================================
+// TABLE COLUMN DEFINITIONS
+// ================================================================
+
+const COLUMNS = [
+  {
+    key: 'name',
+    label: 'Property',
+    fmt : v => escHtml(v),
+    csv : v => `"${String(v).replace(/"/g, '""')}"`,
+  },
+  {
+    key: 'units',
+    label: 'Units',
+    fmt : v => v.toLocaleString(),
+    csv : v => v,
+  },
+  {
+    key: 'vacancy',
+    label: 'Vacancy',
+    fmt : v => (v * 100).toFixed(1) + '%',
+    csv : v => (v * 100).toFixed(4),
+  },
+  {
+    key: 'avgRent',
+    label: 'Avg Rent',
+    fmt : v => '$' + fmtNum(v),
+    csv : v => v.toFixed(2),
+  },
+  {
+    key: 'revenuePerUnit',
+    label: 'Revenue / Unit',
+    fmt : v => '$' + fmtNum(v),
+    csv : v => v.toFixed(2),
+  },
+  {
+    key: 'totalRevenue',
+    label: 'Total Revenue',
+    fmt : v => '$' + fmtNum(v),
+    csv : v => v.toFixed(2),
+  },
+  {
+    key: 'taxes',
+    label: 'Taxes Total',
+    fmt : (v, row) => '$' + fmtNum(v) + (row.taxes === 0 ? '<span class="tax-unknown" title="Tax figure is $0 — may require additional inquiry to confirm accuracy">?</span>' : ''),
+    csv : v => v.toFixed(2),
+  },
+  {
+    key: 'taxesRevenueRatio',
+    label: 'Taxes / Revenue',
+    fmt : (v, row) => (v * 100).toFixed(2) + '%' + (row.taxes === 0 ? '<span class="tax-unknown" title="Tax figure is $0 — may require additional inquiry to confirm accuracy">?</span>' : ''),
+    csv : v => (v * 100).toFixed(4),
+  },
+  {
+    key: 'revenueScore',
+    label: 'Revenue Score',
+    fmt : v => v.toFixed(1),
+    csv : v => v.toFixed(1),
+    isScore: true,
+  },
+  {
+    key: 'vacancyScore',
+    label: 'Occupancy Score',
+    fmt : v => v.toFixed(1),
+    csv : v => v.toFixed(1),
+    isScore: true,
+  },
+  {
+    key: 'taxScore',
+    label: 'Tax Score',
+    fmt : v => v.toFixed(1),
+    csv : v => v.toFixed(1),
+    isScore: true,
+  },
+  {
+    key: 'totalScore',
+    label: 'Total Score',
+    fmt : v => v.toFixed(1),
+    csv : v => v.toFixed(1),
+    isTotal: true,
+  },
+];
+
+function fmtNum(v) {
+  return v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+
+// ================================================================
+// FULL RESULTS TABLE RENDERING
+// ================================================================
+
+function renderTable() {
+  const sorted = [...processedRows].sort((a, b) => {
+    const v1 = a[sortState.col];
+    const v2 = b[sortState.col];
+    if (typeof v1 === 'string') {
+      return sortState.dir === 'asc' ? v1.localeCompare(v2) : v2.localeCompare(v1);
+    }
+    return sortState.dir === 'asc' ? v1 - v2 : v2 - v1;
+  });
+
+  let html = `<table>
+    <colgroup>
+      <col class="col-name">
+      <col class="col-units">
+      <col class="col-vacancy">
+      <col class="col-avg-rent">
+      <col class="col-medium">
+      <col class="col-medium">
+      <col class="col-medium">
+      <col class="col-medium">
+      <col class="col-score">
+      <col class="col-score">
+      <col class="col-tax-score">
+      <col class="col-score">
+    </colgroup>
+    <thead><tr>`;
+  for (const col of COLUMNS) {
+    let cls = '';
+    if (sortState.col === col.key) {
+      cls = sortState.dir === 'asc' ? 'sort-asc' : 'sort-desc';
+    }
+    html += `<th class="${cls}" data-key="${col.key}">${col.label}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  const maxPossibleScore = 30;
+
+  for (const row of sorted) {
+    html += '<tr>';
+    for (const col of COLUMNS) {
+      const val = row[col.key];
+      let cellContent = col.fmt(val, row);
+      let cellClass   = col.key === 'name' ? 'col-name' : '';
+      let cellTitle   = col.key === 'name' ? ` title="${escHtml(String(val))}"` : '';
+
+      if (col.isTotal) {
+        cellClass = 'total-score-cell';
+        const palette = scorePalette(val, maxPossibleScore);
+        cellContent = `<span class="score-badge" style="background:${palette.bg};color:${palette.fg}">${cellContent}</span>`;
+      } else if (col.isScore) {
+        cellClass = 'score-cell';
+      }
+
+      html += `<td class="${cellClass}"${cellTitle}>${cellContent}</td>`;
+    }
+    html += '</tr>';
+  }
+
+  html += '</tbody></table>';
+  tableContainer.innerHTML = html;
+
+  tableContainer.querySelectorAll('th[data-key]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.getAttribute('data-key');
+      if (sortState.col === key) {
+        sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortState.col = key;
+        sortState.dir = 'desc';
+      }
+      renderTable();
+    });
+  });
+}
+
+function scorePalette(val, maxScore) {
+  if (maxScore === 0) return { bg: '#f1f5f9', fg: '#475569' };
+  const pct = val / maxScore;
+  if (pct >= 0.67) return { bg: '#dcfce7', fg: '#166534' };
+  if (pct >= 0.33) return { bg: '#fef9c3', fg: '#713f12' };
+  return { bg: '#fee2e2', fg: '#991b1b' };
+}
+
+function renderEmptyState(message) {
+  tableContainer.innerHTML = `
+    <div class="empty-state">
+      <div class="empty-icon">📭</div>
+      <p>${message}</p>
+    </div>`;
+  resultsCount.textContent = 'No data';
+  downloadBtn.disabled = true;
+}
+
+
+// ================================================================
+// CSV EXPORT
+// ================================================================
+
+downloadBtn.addEventListener('click', () => {
+  if (processedRows.length === 0) return;
+
+  const headerRow = COLUMNS.map(c => `"${c.label}"`).join(',');
+
+  const dataRows = processedRows.map(row =>
+    COLUMNS.map(col => col.csv(row[col.key])).join(',')
+  );
+
+  const csvContent = '\uFEFF' + [headerRow, ...dataRows].join('\r\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href     = url;
+  a.download = 'lpg_acquisition_results.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+
+// ================================================================
+// UTILITY
+// ================================================================
+
+function setStatus(msg, type = '') {
+  statusMsg.textContent = msg;
+  statusMsg.className   = 'status ' + type;
+}
+</script>
+
+</body>
+</html>
